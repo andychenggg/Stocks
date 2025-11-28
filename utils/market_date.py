@@ -3,6 +3,8 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import pytz
 from datetime import timedelta
+from typing import Tuple
+
 
 ET = pytz.timezone("America/New_York")
 NASDAQ = mcal.get_calendar("NASDAQ")
@@ -85,8 +87,37 @@ def hours_from_close() -> int:
         return math.floor(diff_hours)
     else:
         return min(-1, math.ceil(diff_hours))
+
+
+
+def get_summary_config() -> Tuple[int, bool, str]:
+    """
+    获取当前应该使用的总结配置
     
+    返回：
+        (limit, is_whole_day, description)
+    """
+    market_open = is_market_open()
+    hours_open = hours_from_open()
+    hours_close = hours_from_close()
+    
+    # 场景3：收盘后立即总结（收盘后0-1小时内）
+    if 0 <= hours_close < 1:
+        return 800, True, "收盘总结（过去24小时）"
+    
+    # 场景2：盘前2小时 + 开盘期间
+    if -2 <= hours_open < 7:
+        if hours_open < 0:
+            return 200, False, f"盘前总结（开盘前 {abs(hours_open)} 小时）"
+        else:
+            return 200, False, f"盘中总结（开盘后 {hours_open} 小时）"
+    
+    # 场景1：休市/周末
+    return 200, False, "休市总结（非交易时段）"
+
+
 if __name__ == "__main__":
     print("NASDAQ 正股开盘中？", is_market_open())
     print("NASDAQ 距离开盘小时数:", hours_from_open())
     print("NASDAQ 距离收盘小时数:", hours_from_close())
+    print(get_summary_config())

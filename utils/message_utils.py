@@ -58,7 +58,7 @@ def get_payload(limit: int, before: int = None) -> str:
     return "{\"query\":\"query MessagesFetchFeedPosts($feedType: FeedTypes!, $after: BigInt, $before: BigInt, $aroundId: ID, $feedId: ID!, $includeDeleted: Boolean, $includeReactions: Boolean, $limit: Int, $direction: Direction) {\\n  feedPosts(\\n    feedType: $feedType\\n    after: $after\\n    before: $before\\n    aroundId: $aroundId\\n    feedId: $feedId\\n    includeDeleted: $includeDeleted\\n    includeReactions: $includeReactions\\n    limit: $limit\\n    direction: $direction\\n  ) {\\n    posts {\\n      __typename\\n      ...DmsPostFragment\\n    }\\n    users {\\n      ...BasicUserProfileDetails\\n    }\\n    reactions {\\n      ...ReactionFragment\\n    }\\n  }\\n}\\n\\nfragment DmsPostFragment on DmsPost {\\n  id\\n  createdAt\\n  updatedAt\\n  isDeleted\\n  sortKey\\n  isPosterAdmin\\n  mentionedUserIds\\n  content\\n  feedId\\n  feedType\\n  attachments {\\n    ...Attachment\\n  }\\n  gifs {\\n    height\\n    provider\\n    originalUrl\\n    previewUrl\\n    provider\\n    slug\\n    title\\n    width\\n  }\\n  isEdited\\n  isEveryoneMentioned\\n  isPinned\\n  linkEmbeds {\\n    description\\n    favicon\\n    image\\n    processing\\n    title\\n    url\\n    footer {\\n      title\\n      description\\n      icon\\n    }\\n  }\\n  richContent\\n  userId\\n  viewCount\\n  reactionCounts {\\n    reactionType\\n    userCount\\n    value\\n  }\\n  messageType\\n  embed\\n  replyingToPostId\\n  replyingToPost {\\n    id\\n    richContent\\n    content\\n    gifs {\\n      __typename\\n    }\\n    isDeleted\\n    linkEmbeds {\\n      __typename\\n    }\\n    mentionedUserIds\\n    isEveryoneMentioned\\n    messageType\\n    attachments {\\n      contentType\\n    }\\n    user {\\n      id\\n      name\\n      username\\n      roles\\n      profilePicSm: profileImageSrcset(style: s32) {\\n        double\\n      }\\n    }\\n  }\\n  poll {\\n    options {\\n      id\\n      text\\n    }\\n  }\\n  customAuthor {\\n    displayName\\n    profilePicture {\\n      sourceUrl\\n    }\\n  }\\n}\\n\\nfragment Attachment on AttachmentInterface {\\n  __typename\\n  id\\n  signedId\\n  analyzed\\n  byteSizeV2\\n  filename\\n  contentType\\n  source(variant: original) {\\n    url\\n  }\\n  ... on ImageAttachment {\\n    height\\n    width\\n    blurhash\\n    aspectRatio\\n  }\\n  ... on VideoAttachment {\\n    height\\n    width\\n    duration\\n    aspectRatio\\n    preview(variant: original) {\\n      url\\n    }\\n  }\\n  ... on AudioAttachment {\\n    duration\\n    waveformUrl\\n  }\\n}\\n\\nfragment BasicUserProfileDetails on PublicProfileUser {\\n  id\\n  name\\n  createdAt\\n  bannerImageLg: bannerImageSrcset(style: s600x200) {\\n    double\\n  }\\n  profilePicLg: profileImageSrcset(style: s128) {\\n    double\\n  }\\n  profilePicSm: profileImageSrcset(style: s32) {\\n    double\\n  }\\n  username\\n  createdAt\\n  roles\\n  lastSeenAt\\n  isPlatformPolice\\n}\\n\\nfragment ReactionFragment on Reaction {\\n  id\\n  isDeleted\\n  createdAt\\n  updatedAt\\n  feedId\\n  feedType\\n  postId\\n  postType\\n  userId\\n  reactionType\\n  score\\n  value\\n}\",\"variables\":{\"feedId\":\"chat_feed_1CTr5VAdNHtbZAFaTitvoT\",\"feedType\":\"chat_feed\"," + \
         "\"limit\":"+ str(limit) + ",\"before\":"+ before_str + ",\"direction\":\"desc\",\"includeDeleted\":false}}"
 
-def get_history_posts(limit: int, before: Optional[int] = None) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     获取历史消息（带缓存 + 分页）。
 
@@ -67,7 +67,7 @@ def get_history_posts(limit: int, before: Optional[int] = None) -> Tuple[List[Di
       before: 毫秒时间戳
         - None: 表示“从现在往回翻最新的 limit 条”
         - 非 None: 表示“获取 before 之前的 limit 条”
-
+      is_whole_day: 是否获取整天的消息
     返回：
       (history_items, username_dict)
         history_items: 按 createdAt 降序排列的帖子列表
@@ -188,4 +188,8 @@ def get_history_posts(limit: int, before: Optional[int] = None) -> Tuple[List[Di
     _save_posts_cache(posts_cache)
     _save_users_cache(users_cache)
 
+    if is_whole_day:
+        last_created = int(time.time() * 1000) - 24 * 60 * 60 * 1000
+        history_items = [p for p in history_items if int(p.get('createdAt', 0)) >= last_created]
+    logger.info(f"最终获取历史消息数量：{len(history_items)}")
     return history_items, users_cache

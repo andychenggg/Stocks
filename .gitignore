@@ -5,3 +5,4 @@ __pycache__/
 utils/local_secrets.py
 .venv/
 data/
+logs/
