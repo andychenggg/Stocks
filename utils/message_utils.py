@@ -4,7 +4,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import requests
 from loguru import logger
-from .secrets import whom_headers as headers
+from .local_secrets import whom_headers as headers
 
 url = "https://whop.com/api/graphql/MessagesFetchFeedPosts/"
 

@@ -4,7 +4,7 @@ from typing import Optional
 from openai import OpenAI
 from loguru import logger
 import pytz
-from .secrets import openai_api_key, openai_base_url
+from .local_secrets import openai_api_key, openai_base_url
 client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_base_url
