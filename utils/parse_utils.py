@@ -8,7 +8,7 @@ def format_timestamp(ts_ms: str | int) -> str:
     """
     ts_ms_int = int(ts_ms)
     dt = datetime.fromtimestamp(ts_ms_int / 1000)
-    return dt.strftime("%H:%M:%S")
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_user_name(post: Dict[str, Any], username_dict: Dict[str, str]) -> str:
