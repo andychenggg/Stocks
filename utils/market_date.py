@@ -109,9 +109,12 @@ def get_summary_config() -> Tuple[int, bool, str]:
     if -1 <= hours_open < 7:
         if hours_open < 0:
             return 300, False, f"盘前总结（开盘前 {abs(hours_open)} 小时）"
-        else:
+        elif hours_open < 2:
+            return 100, False, f"盘中总结（开盘后 {hours_open} 小时）"
+        elif hours_open < 5:
             return 200, False, f"盘中总结（开盘后 {hours_open} 小时）"
-    
+        else:
+            return 300, False, f"盘中总结（开盘后 {hours_open} 小时）"
     # 场景1：休市/周末
     return 200, False, "休市总结（非交易时段）"
 
