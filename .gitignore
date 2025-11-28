@@ -1,8 +1,7 @@
 node_modules
 docs/.vitepress/cache
 docs/.vitepress/dist
-whop_summary.py
 __pycache__/
-utils/
+utils/secrets.py
 .venv/
 data/
