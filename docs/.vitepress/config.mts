@@ -22,7 +22,7 @@ export default defineConfig({
   title: "Stocks Summaries",
   description: "A VitePress Site for Stocks Summaries.",
 
-  base: '/Stocks/',
+  base: '/',
 
 
   themeConfig: {
