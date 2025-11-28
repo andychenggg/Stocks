@@ -190,6 +190,8 @@ def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bo
 
     if is_whole_day:
         last_created = int(time.time() * 1000) - 24 * 60 * 60 * 1000
+        logger.info(f"过滤到过去24小时的消息，截止时间戳={last_created}, 条数前={len(history_items)}")
         history_items = [p for p in history_items if int(p.get('createdAt', 0)) >= last_created]
+        logger.info(f"条数后={len(history_items)}")
     logger.info(f"最终获取历史消息数量：{len(history_items)}")
     return history_items, users_cache
