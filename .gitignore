@@ -2,6 +2,6 @@ node_modules
 docs/.vitepress/cache
 docs/.vitepress/dist
 __pycache__/
-utils/secrets.py
+utils/local_secrets.py
 .venv/
 data/
