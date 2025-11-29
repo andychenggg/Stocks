@@ -38,7 +38,7 @@ if __name__ == "__main__":
     if 0 <= hours_close < 1:
         # 收盘总结
         pass
-    elif -1 <= hours_open < 7:
+    elif -1 <= hours_open < 7 and hours_close < 1:
         # 盘前/盘中总结
         pass
     else:
