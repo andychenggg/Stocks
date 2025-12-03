@@ -60,76 +60,74 @@ def get_payload(limit: int, before: int = None) -> str:
 
 def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    获取历史消息（带缓存 + 分页）。
-
-    参数：
-      limit: 想要的消息条数
-      before: 毫秒时间戳
-        - None: 表示“从现在往回翻最新的 limit 条”
-        - 非 None: 表示“获取 before 之前的 limit 条”
-      is_whole_day: 是否获取整天的消息
-    返回：
-      (history_items, username_dict)
-        history_items: 按 createdAt 降序排列的帖子列表
-        username_dict: {user_id: username}
+    获取历史消息（带缓存 + 分页 + 自动去重 + 智能拼接）。
     """
     posts_cache = _load_posts_cache()     # {post_id: post}
     users_cache = _load_users_cache()     # {user_id: username}
+    
     logger.info(f"加载帖子缓存 {len(posts_cache)} 条，用户缓存 {len(users_cache)} 条")
     logger.info(f"准备获取历史消息，limit={limit}，before={before}")
-    def _match_time_range(post: Dict[str, Any]) -> bool:
-        """是否满足当前 before 条件"""
-        try:
-            created = int(post.get('createdAt', 0))
-        except Exception:
-            return False
-        if before is None:
-            return True
-        return created < before
 
-    # 先从缓存里查符合时间条件的
-    cached_posts = [p for p in posts_cache.values() if _match_time_range(p)]
-    cached_posts.sort(key=lambda p: int(p.get('createdAt', 0)), reverse=True)
-    logger.info(f"缓存中符合时间条件的帖子数量：{len(cached_posts)}")
     history_items: List[Dict[str, Any]] = []
     seen_ids = set()
 
-    for p in cached_posts:
-        if len(history_items) >= limit:
-            break
-        pid = p.get('id')
-        if not pid or pid in seen_ids:
-            continue
-        history_items.append(p)
-        seen_ids.add(pid)
+    # --- 核心逻辑修复开始 ---
+    
+    # 判断是否需要强制刷新（即：before为None表示要最新的，必须走API；before为旧时间戳则可先信缓存）
+    should_fetch_fresh = (before is None)
 
-    need_remote = len(history_items) < limit
+    # 1. 如果不是强制刷新最新消息，先尝试从缓存获取
+    if not should_fetch_fresh:
+        def _match_time_range(post: Dict[str, Any]) -> bool:
+            try:
+                created = int(post.get('createdAt', 0))
+            except Exception:
+                return False
+            if before is None:
+                return True
+            return created < before
 
-    # 用于分页请求的 before 游标：
-    # - 第一页：用用户传入的 before（可能是 None）
+        cached_posts = [p for p in posts_cache.values() if _match_time_range(p)]
+        cached_posts.sort(key=lambda p: int(p.get('createdAt', 0)), reverse=True)
+        
+        for p in cached_posts:
+            if len(history_items) >= limit:
+                break
+            pid = p.get('id')
+            if not pid or pid in seen_ids:
+                continue
+            history_items.append(p)
+            seen_ids.add(pid)
+            
+        logger.info(f"从缓存中命中 {len(history_items)} 条消息")
+
+    # 2. 循环获取（如果缓存不够，或者强制需要最新数据）
     next_before = before
-
-    while need_remote:
+    
+    while len(history_items) < limit:
+        
         remaining = limit - len(history_items)
-        if remaining <= 0:
+        page_limit = max(min(100, remaining), 50) # 稍微多取一点防止过滤后不够，或者直接用 remaining
+
+        logger.info(f"请求API获取消息，page_limit={page_limit}，next_before={next_before}")
+
+        # --- 构造请求 ---
+        try:
+            payload = get_payload(page_limit, next_before) 
+            resp = requests.request("POST", url, headers=headers, data=payload)
+            resp.raise_for_status()
+            data = resp.json()['data']['feedPosts']
+            user_json = data['users']
+            posts_page = data['posts']
+        except Exception as e:
+            logger.error(f"API请求失败: {e}")
             break
-
-        page_limit = min(100, remaining)
-        logger.info(f"请求网站获取更多历史消息，page_limit={page_limit}，next_before={next_before}")
-        # 构造 payload（你已有 get_payload / url / headers）
-        # 当 next_before=None 时，API 会返回“最新的 page_limit 条”
-        payload = get_payload(page_limit, next_before)
-        resp = requests.request("POST", url, headers=headers, data=payload)
-        resp.raise_for_status()
-        data = resp.json()['data']['feedPosts']
-
-        user_json = data['users']
-        posts_page = data['posts']
 
         if not posts_page:
-            logger.warning("请求网站未获取到更多历史消息，结束翻页")
+            logger.warning("API未返回更多消息")
             break
 
+        # 更新用户缓存
         for u in user_json:
             uid = u.get('id')
             uname = u.get('username')
@@ -137,26 +135,31 @@ def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bo
                 users_cache[uid] = uname
 
         min_created_this_page: Optional[int] = None
+        overlap_found = False # 标记是否撞到了缓存中的旧数据
 
         for post in posts_page:
             pid = post.get('id')
             if not pid:
                 continue
 
-            # 放入缓存（覆盖旧的）
+            # --- 检测重合---
+            # 如果我们在 API 拿到的数据，本地缓存里已经有了，说明我们“接上”了历史数据
+            # 只有在“获取最新”模式下，这个重合检测才最有价值，意味着可以停止 API 请求转而用缓存了
+            if should_fetch_fresh and pid in posts_cache:
+                overlap_found = True
             posts_cache[pid] = post
 
+            # 解析时间
             try:
                 created = int(post.get('createdAt', 0))
             except Exception:
                 created = 0
 
-            # 记录本页最早的 createdAt，用于下一页 before
+            # 维护翻页游标
             if min_created_this_page is None or created < min_created_this_page:
                 min_created_this_page = created
 
-            # 和缓存数据一样，统一用 _match_time_range 判时间范围
-            if not _match_time_range(post):
+            if before is not None and created >= before:
                 continue
 
             if pid in seen_ids:
@@ -165,20 +168,40 @@ def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bo
             history_items.append(post)
             seen_ids.add(pid)
 
-        # 更新下一页的 before 游标：继续往更早时间翻
-        if min_created_this_page is None:
-            logger.warning("本页未获取到有效的 createdAt，结束翻页")
-            break
+            if len(history_items) >= limit:
+                break
+        
         next_before = min_created_this_page
 
-        # 数量够了就结束，否则继续翻页
-        if len(history_items) >= limit:
-            logger.info(f"已获取到足够的历史消息，数量={len(history_items)}，结束翻页")
+        # --- 如果已经接上了缓存，且我们需要更多数据，可以直接从缓存补齐 ---
+        if overlap_found and len(history_items) < limit and min_created_this_page:
+            logger.info(f"检测到数据与缓存重合，尝试从缓存补齐剩余 {limit - len(history_items)} 条")
+            
+            # 从缓存里找比 next_before 更早的帖子
+            cached_rest = [
+                p for p in posts_cache.values() 
+                if int(p.get('createdAt', 0)) < next_before
+            ]
+            cached_rest.sort(key=lambda p: int(p.get('createdAt', 0)), reverse=True)
+            
+            for p in cached_rest:
+                if len(history_items) >= limit:
+                    break
+                pid = p.get('id')
+                if pid not in seen_ids:
+                    history_items.append(p)
+                    seen_ids.add(pid)
+            
+            # 补齐尝试后，无论够不够，都认为本次获取结束
             break
+            
+        if min_created_this_page is None:
+            break
+            
+        time.sleep(1) # 稍微防抖
 
-        time.sleep(2)
-
-    # 最终按时间从新到旧排序，并截断到 limit 条
+    # 3. 收尾工作
+    # 再次排序确保顺序正确（因为混合了 API 和 缓存）
     history_items = sorted(
         history_items,
         key=lambda p: int(p.get('createdAt', 0)),
@@ -188,10 +211,13 @@ def get_history_posts(limit: int, before: Optional[int] = None, is_whole_day: bo
     _save_posts_cache(posts_cache)
     _save_users_cache(users_cache)
 
+    # 处理整天逻辑
     if is_whole_day:
-        last_created = int(time.time() * 1000) - 24 * 60 * 60 * 1000
-        logger.info(f"过滤到过去24小时的消息，截止时间戳={last_created}, 条数前={len(history_items)}")
+        current_ms = int(time.time() * 1000)
+
+        last_created = current_ms - 24 * 60 * 60 * 1000
         history_items = [p for p in history_items if int(p.get('createdAt', 0)) >= last_created]
-        logger.info(f"条数后={len(history_items)}")
-    logger.info(f"最终获取历史消息数量：{len(history_items)}")
+        logger.info(f"过滤整天消息，剩余 {len(history_items)} 条")
+
+    logger.info(f"最终返回消息数量：{len(history_items)}")
     return history_items, users_cache
