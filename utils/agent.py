@@ -2,24 +2,45 @@ import datetime
 import os
 from typing import Optional
 from openai import OpenAI
+from google import genai
 from loguru import logger
 import pytz
-from .local_secrets import openai_api_key, openai_base_url
-client = OpenAI(
-    api_key=openai_api_key,
-    base_url=openai_base_url
-)
+from .local_secrets import model_key
+# client = OpenAI(
+#     api_key=openai_api_key,
+#     base_url=openai_base_url
+# )
+
+# client = genai.Client(api_key=openai_api_key)   
+
 
 def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
     logger.info(f"正在使用模型 {model} 生成总结...")
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "user", "content": to_summary_text}
-        ]
-    )
+    selected_config = next((item for item in model_key if item['model'] == model), None)
+    app = selected_config['app']
+    client = None
+    
+    if app == "openai":
+        client = OpenAI(
+            api_key=selected_config['key'],
+            base_url=selected_config['base_url']
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": to_summary_text}
+            ]
+        )
+        response = response.choices[0].message.content
+    elif app == "google":
+        client = genai.Client(api_key=selected_config['key'])
+    
+        response = client.models.generate_content(
+            model=model, contents=to_summary_text
+        )
+        response = response.text
     logger.info("模型生成总结完成。")
-    return response.choices[0].message.content
+    return response
 
 def save_to_md(
     summary: str,
