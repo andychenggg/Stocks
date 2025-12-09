@@ -1,5 +1,6 @@
 import datetime
 import os
+import time
 from typing import Optional
 from openai import OpenAI
 from google import genai
@@ -25,23 +26,36 @@ def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
             api_key=selected_config['key'],
             base_url=selected_config['base_url']
         )
-        response = client.chat.completions.create(
+        response_fn = lambda: client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "user", "content": to_summary_text}
-            ]
-        )
-        response = response.choices[0].message.content
+            messages=[{"role": "user", "content": to_summary_text}]
+        ).choices[0].message.content
+
     elif app == "google":
         client = genai.Client(api_key=selected_config['key'])
-    
-        response = client.models.generate_content(
-            model=model, contents=to_summary_text
-        )
-        response = response.text
-    logger.info("模型生成总结完成。")
-    return response
+        response_fn = lambda: client.models.generate_content(
+            model=model,
+            contents=to_summary_text
+        ).text
 
+    else:
+        raise ValueError(f"Unknown app: {app}")
+
+    last_err = None
+    for attempt in range(3):
+        try:
+            response = response_fn()
+            logger.info("模型生成总结完成。")
+            return response
+        except Exception as e:
+            last_err = e
+            logger.warning(f"第 {attempt} 次生成失败: {e}")
+            if attempt < 4:
+                time.sleep(1.5 * attempt)
+            else:
+                logger.error("重试次数耗尽，仍然失败。")
+
+    raise last_err
 def save_to_md(
     summary: str,
     description: str,
