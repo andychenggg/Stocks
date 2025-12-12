@@ -28,6 +28,7 @@ def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
         )
         response_fn = lambda: client.chat.completions.create(
             model=model,
+            temperature=0.3,
             messages=[{"role": "user", "content": to_summary_text}]
         ).choices[0].message.content
 
