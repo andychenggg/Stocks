@@ -104,6 +104,8 @@ def get_summary_config() -> Tuple[int, bool, str]:
     # 场景3：收盘后立即总结（收盘后0-1小时内）
     if 0 <= hours_close < 1:
         return 1000, True, "全天回顾", "收盘总结（过去24小时）"
+    elif 4 <= hours_close < 5:
+        return 1000, True, "盘后总结", "盘后总结（收盘后4-5小时内）"
     
     # 场景2：盘前2小时 + 开盘期间
     if -1 <= hours_open < 7:
