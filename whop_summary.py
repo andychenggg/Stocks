@@ -12,11 +12,14 @@ def summary_run():
         is_whole_day: 是否只获取过去24小时的消息
     """
     limit, is_whole_day, title, description = get_summary_config()
-    # limit, is_whole_day, title, description = 1000, True, "盘前全天总结", "盘前总结（过去24小时）"
+    # limit, is_whole_day, title, description = 1000, True, "盘后总结", "盘后全天总结（收盘后4-5小时内）"
     history_items, username_dict = get_history_posts(limit, is_whole_day=is_whole_day)
     big_text = history_list_to_text(history_items, username_dict)
     to_summary_text = summary_prompt + big_text
-    model = "gemini-2.5-pro"
+    # model = "gemini-2.5-pro"
+    # model = "Qwen/Qwen3-VL-32B-Instruct"
+    model = "google/gemini-3-pro-preview"
+    model = "google/gemini-3-pro-preview"
     summary = get_response(to_summary_text, model=model)
 
     save_to_md(
@@ -38,7 +41,10 @@ if __name__ == "__main__":
     hours_close = hours_from_close()
     
     # 判断是否应该执行
-    if 0 <= hours_close < 1:
+    if 4 <= hours_close < 5:
+        # 盘后总结  
+        pass
+    elif 0 <= hours_close < 2:
         # 收盘总结
         pass
     elif -1 <= hours_open < 7 and hours_close < 1:

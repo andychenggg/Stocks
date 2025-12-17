@@ -6,3 +6,4 @@ utils/local_secrets.py
 .venv/
 data/
 logs/
+crypto_monitor.db
