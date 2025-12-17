@@ -309,7 +309,8 @@ function buildWsUrl() {
 
   // 2) Otherwise build from scheme + host + port
   const loc = window.location
-  const wsScheme = loc.protocol === 'https:' ? 'wss' : 'ws'
+//   const wsScheme = loc.protocol === 'https:' ? 'wss' : 'ws'
+    const wsScheme = 'ws';
 //   const host =
 //     (window as any).__ALERT_WS_HOST ||
 //     (import.meta as any).env?.VITE_ALERT_WS_HOST ||
