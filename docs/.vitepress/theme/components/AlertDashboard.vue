@@ -55,10 +55,10 @@
             {{ a.symbol }} · {{ a.magnitude * 100 }}% · {{ a.window_minutes }}m
           </div>
           <div class="meta">
-            高点 {{ fmtTs(peakTs(a)) }} · {{ formatPrice(peakPrice(a)) }} | 触发 {{ fmtTs(triggerTs(a)) }} · {{ formatPrice(triggerPrice(a)) }}
+            {{ anchorLabel(a) }} {{ fmtTs(anchorTs(a)) }} · {{ pctOrDash(anchorPct(a)) }} · {{ formatPrice(anchorPrice(a)) }} | 触发 {{ fmtTs(triggerTs(a)) }} · {{ pctOrDash(currentPct(a)) }} · {{ formatPrice(triggerPrice(a)) }}
           </div>
           <div class="meta">
-            开盘 {{ formatPrice(a.reference.open) }} · 高点→触发跌幅 {{ pctOrDash(dropFromPeak(a)) }}（阈值 {{ (a.magnitude * 100).toFixed(1) }}%）
+            今开 {{ formatPrice(a.reference.open) }} · 变动 {{ pctOrDash(moveFromAnchor(a)) }}（阈值 {{ (a.magnitude * 100).toFixed(1) }}%）
           </div>
         </div>
       </div>
@@ -390,25 +390,60 @@ function peakPrice(a: any) {
   return a?.reference?.peak_price ?? a?.reference?.high ?? null
 }
 
-function triggerPrice(a: any) {
-  return a?.reference?.current_price ?? a?.reference?.close ?? null
+function pctOrDash(v: number | null | undefined) {
+  if (v === null || v === undefined) return '--'
+  return formatPct(v)
 }
 
-function peakTs(a: any) {
-  return a?.reference?.peak_ts ?? a?.ts ?? null
+function anchorPrice(a: any) {
+  return a?.reference?.anchor_price ?? a?.reference?.peak_price ?? a?.reference?.high ?? null
+}
+
+function anchorTs(a: any) {
+  return a?.reference?.anchor_ts ?? a?.reference?.peak_ts ?? a?.ts ?? null
+}
+
+function anchorPct(a: any) {
+  if (a?.reference?.anchor_pct_from_open !== undefined && a?.reference?.anchor_pct_from_open !== null) {
+    return a.reference.anchor_pct_from_open
+  }
+  const open = a?.reference?.open
+  const anchor = anchorPrice(a)
+  if (open === null || open === undefined || open === 0 || anchor === null) return null
+  return (anchor - open) / open
+}
+
+function currentPct(a: any) {
+  if (a?.reference?.current_pct_from_open !== undefined && a?.reference?.current_pct_from_open !== null) {
+    return a.reference.current_pct_from_open
+  }
+  const open = a?.reference?.open
+  const current = triggerPrice(a)
+  if (open === null || open === undefined || open === 0 || current === null) return null
+  return (current - open) / open
+}
+
+function triggerPrice(a: any) {
+  return a?.reference?.current_price ?? a?.reference?.close ?? null
 }
 
 function triggerTs(a: any) {
   return a?.reference?.current_ts ?? a?.ts ?? null
 }
 
-function dropFromPeak(a: any) {
-  return a?.reference?.drop_from_peak ?? null
+function moveFromAnchor(a: any) {
+  if (a?.reference?.move_from_anchor !== undefined && a?.reference?.move_from_anchor !== null) {
+    return a.reference.move_from_anchor
+  }
+  if (a?.alert_type === 'rapid_drop') return a?.reference?.drop_from_peak ?? null
+  if (a?.alert_type === 'rapid_rebound') return a?.reference?.rise_from_trough ?? null
+  return null
 }
 
-function pctOrDash(v: number | null | undefined) {
-  if (v === null || v === undefined) return '--'
-  return formatPct(v)
+function anchorLabel(a: any) {
+  if (a?.reference?.anchor_type === 'trough') return '低点'
+  if (a?.alert_type === 'rapid_rebound') return '低点'
+  return '高点'
 }
 
 function scheduleRefreshOnAlert() {
