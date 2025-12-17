@@ -126,10 +126,14 @@ class SQLiteStore:
                 reference_open REAL NOT NULL,
                 reference_close REAL NOT NULL,
                 reference_low REAL NOT NULL,
-                reference_high REAL NOT NULL
+                reference_high REAL NOT NULL,
+                reference_peak_ts INTEGER,
+                reference_current_ts INTEGER,
+                drop_from_peak REAL
             );
             """
         )
+        await self._ensure_alert_columns()
 
     async def insert_kline(self, k: ClosedKline) -> None:
         await self._execute(
@@ -167,11 +171,14 @@ class SQLiteStore:
         reference_close: float,
         reference_low: float,
         reference_high: float,
+        reference_peak_ts: Optional[int],
+        reference_current_ts: Optional[int],
+        drop_from_peak: Optional[float],
     ) -> None:
         await self._execute(
             """
-            INSERT INTO alerts(symbol, alert_type, magnitude, ts, reference_open, reference_close, reference_low, reference_high)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO alerts(symbol, alert_type, magnitude, ts, reference_open, reference_close, reference_low, reference_high, reference_peak_ts, reference_current_ts, drop_from_peak)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 symbol,
@@ -182,8 +189,56 @@ class SQLiteStore:
                 reference_close,
                 reference_low,
                 reference_high,
+                reference_peak_ts,
+                reference_current_ts,
+                drop_from_peak,
             ),
         )
+
+    async def fetch_recent_alerts(self, limit: int = 10) -> List[dict]:
+        cutoff_ms = int((time.time() - RETENTION_SECONDS) * 1000)
+        rows = await asyncio.to_thread(
+            self._fetch_alert_rows,
+            limit,
+            cutoff_ms,
+        )
+        alerts: List[dict] = []
+        for r in rows:
+            (
+                symbol,
+                alert_type,
+                magnitude,
+                ts,
+                reference_open,
+                reference_close,
+                reference_low,
+                reference_high,
+                reference_peak_ts,
+                reference_current_ts,
+                drop_from_peak,
+            ) = r
+            alerts.append(
+                {
+                    "type": "alert",
+                    "symbol": symbol.upper(),
+                    "alert_type": alert_type,
+                    "magnitude": magnitude,
+                    "window_minutes": WINDOW_SIZE_MINUTES,
+                    "ts": ts,
+                    "reference": {
+                        "open": reference_open,
+                        "close": reference_close,
+                        "low": reference_low,
+                        "high": reference_high,
+                        "peak_price": reference_high,
+                        "peak_ts": reference_peak_ts or ts,
+                        "current_price": reference_close,
+                        "current_ts": reference_current_ts or ts,
+                        "drop_from_peak": drop_from_peak,
+                    },
+                }
+            )
+        return alerts
 
     async def prune_older_than(self, cutoff_ms: int) -> None:
         await self._execute("DELETE FROM klines WHERE close_time < ?;", (cutoff_ms,))
@@ -201,6 +256,46 @@ class SQLiteStore:
         cur.close()
         conn.close()
 
+    async def _ensure_alert_columns(self) -> None:
+        """Add new alert columns if the DB was created with an older schema."""
+        await asyncio.to_thread(self._ensure_alert_columns_sync)
+
+    def _ensure_alert_columns_sync(self) -> None:
+        conn = sqlite3.connect(self.path)
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(alerts);")
+        cols = {row[1] for row in cur.fetchall()}
+        alters = []
+        if "reference_peak_ts" not in cols:
+            alters.append("ALTER TABLE alerts ADD COLUMN reference_peak_ts INTEGER;")
+        if "reference_current_ts" not in cols:
+            alters.append("ALTER TABLE alerts ADD COLUMN reference_current_ts INTEGER;")
+        if "drop_from_peak" not in cols:
+            alters.append("ALTER TABLE alerts ADD COLUMN drop_from_peak REAL;")
+        for stmt in alters:
+            cur.execute(stmt)
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    def _fetch_alert_rows(self, limit: int, cutoff_ms: int) -> List[Tuple]:
+        conn = sqlite3.connect(self.path)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT symbol, alert_type, magnitude, ts, reference_open, reference_close, reference_low, reference_high, reference_peak_ts, reference_current_ts, drop_from_peak
+            FROM alerts
+            WHERE ts >= ?
+            ORDER BY ts DESC
+            LIMIT ?;
+            """,
+            (cutoff_ms, limit),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+
 
 class BroadcastHub:
     """Manages outbound WebSocket clients for real-time updates."""
@@ -214,9 +309,11 @@ class BroadcastHub:
     async def unregister(self, ws: WebSocketServerProtocol) -> None:
         self.clients.discard(ws)
 
-    async def send_snapshot(self, ws: WebSocketServerProtocol, snapshot: dict) -> None:
+    async def send_snapshot(
+        self, ws: WebSocketServerProtocol, snapshot: dict, alerts: Optional[List[dict]] = None
+    ) -> None:
         try:
-            await ws.send(json.dumps({"type": "snapshot", "data": snapshot}))
+            await ws.send(json.dumps({"type": "snapshot", "data": snapshot, "alerts": alerts or []}))
         except Exception:
             logging.exception("Failed to send snapshot to client")
 
@@ -305,29 +402,37 @@ class MarketMonitor:
         if len(window) < WINDOW_SIZE_MINUTES:
             return None
         open_base = window[0].open
-        close_last = window[-1].close
-        min_low = min(k.low for k in window)
-        max_high = max(k.high for k in window)
+        if open_base == 0:
+            return None
+        latest = window[-1]
+        peak = max(window, key=lambda k: k.high)
+        close_last = latest.close
+        drop_from_peak = (peak.high - close_last) / open_base
         return {
             "window_end": window[-1].close_time,
             "change_close": (close_last - open_base) / open_base,
-            "change_low": (min_low - open_base) / open_base,
-            "change_high": (max_high - open_base) / open_base,
+            "change_low": (min(k.low for k in window) - open_base) / open_base,
+            "change_high": (peak.high - open_base) / open_base,
             "length": len(window),
             "reference_open": open_base,
             "reference_close": close_last,
-            "reference_low": min_low,
-            "reference_high": max_high,
+            "reference_low": min(k.low for k in window),
+            "reference_high": peak.high,
+            "peak_price": peak.high,
+            "peak_ts": peak.close_time,
+            "current_price": close_last,
+            "current_ts": latest.close_time,
+            "drop_from_peak": drop_from_peak,
         }
 
     async def _check_alerts(
         self, symbol: str, window: Deque[ClosedKline], stats: dict
     ) -> None:
         for threshold in ALERT_THRESHOLDS:
-            if stats["change_close"] <= -threshold or stats["change_low"] <= -threshold:
+            if stats.get("drop_from_peak") is None:
+                continue
+            if stats["drop_from_peak"] >= threshold:
                 await self._emit_alert("rapid_drop", threshold, symbol, stats)
-            if stats["change_close"] >= threshold or stats["change_high"] >= threshold:
-                await self._emit_alert("rapid_rebound", threshold, symbol, stats)
 
     async def _emit_alert(
         self, alert_type: str, threshold: float, symbol: str, stats: dict
@@ -338,7 +443,7 @@ class MarketMonitor:
         if now_sec - last_at < ALERT_DEDUP_SECONDS:
             return
         self.last_alert_at[key] = now_sec
-        ts_ms = stats["window_end"]
+        ts_ms = stats.get("current_ts", stats["window_end"])
         payload = {
             "type": "alert",
             "symbol": symbol.upper(),
@@ -348,9 +453,14 @@ class MarketMonitor:
             "ts": ts_ms,
             "reference": {
                 "open": stats["reference_open"],
-                "close": stats["reference_close"],
+                "close": stats["current_price"],
                 "low": stats["reference_low"],
-                "high": stats["reference_high"],
+                "high": stats["peak_price"],
+                "peak_price": stats["peak_price"],
+                "peak_ts": stats["peak_ts"],
+                "current_price": stats["current_price"],
+                "current_ts": stats["current_ts"],
+                "drop_from_peak": stats["drop_from_peak"],
             },
         }
         await self.store.insert_alert(
@@ -359,9 +469,12 @@ class MarketMonitor:
             magnitude=threshold,
             ts=ts_ms,
             reference_open=stats["reference_open"],
-            reference_close=stats["reference_close"],
+            reference_close=stats["current_price"],
             reference_low=stats["reference_low"],
-            reference_high=stats["reference_high"],
+            reference_high=stats["peak_price"],
+            reference_peak_ts=stats.get("peak_ts"),
+            reference_current_ts=stats.get("current_ts"),
+            drop_from_peak=stats.get("drop_from_peak"),
         )
         await self.broadcaster.broadcast(payload)
         logging.info("Alert emitted: %s", payload)
@@ -425,7 +538,8 @@ async def start_client_ws_server(
 ) -> None:
     async def handler(ws: WebSocketServerProtocol) -> None:
         await broadcaster.register(ws)
-        await broadcaster.send_snapshot(ws, monitor.snapshot())
+        alerts = await monitor.store.fetch_recent_alerts(limit=10)
+        await broadcaster.send_snapshot(ws, monitor.snapshot(), alerts)
         try:
             async for _ in ws:
                 # Clients can stay connected; inbound messages are ignored.

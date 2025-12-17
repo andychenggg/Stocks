@@ -202,6 +202,9 @@ function handleMessage(msg: any) {
       lastPrices[s] = payload.price ?? null
       todayOpens[s] = payload.today_open ?? null
     })
+    if (Array.isArray(msg.alerts)) {
+      hydrateAlerts(msg.alerts)
+    }
     updateCharts()
   } else if (msg.type === 'price') {
     const sym = msg.symbol
@@ -216,6 +219,17 @@ function handleMessage(msg: any) {
     })
     if (alerts.length > 50) alerts.pop()
   }
+}
+
+function hydrateAlerts(list: any[]) {
+  alerts.splice(
+    0,
+    alerts.length,
+    ...list.map((a) => ({
+      ...a,
+      id: `${a.symbol}-${a.alert_type}-${a.ts}-${a.magnitude}`
+    }))
+  )
 }
 
 function pushPoint(sym: string, ts: number, price: number) {
