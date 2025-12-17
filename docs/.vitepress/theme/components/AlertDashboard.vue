@@ -64,6 +64,7 @@ type SeriesMap = Record<string, PricePoint[]>
 
 const symbols = ['BTCUSDT', 'ETHUSDT']
 const maxPoints = 240
+const alertApiUrl = buildAlertApiUrl()
 const alerts = reactive<any[]>([])
 const lastPrices = reactive<Record<string, number | null>>({
   BTCUSDT: null,
@@ -85,6 +86,7 @@ let ws: WebSocket | null = null
 let reconnectTimer: number | null = null
 let echartsLib: any = null
 const connectionState = ref<'connecting' | 'open' | 'closed'>('connecting')
+let refreshTimer: number | null = null
 
 symbols.forEach((sym) => {
   chartRefs[sym] = (el: HTMLElement | null) => {
@@ -98,6 +100,7 @@ const connectionClass = computedClass()
 onMounted(async () => {
   await loadEcharts()
   initCharts()
+  fetchInitialAlerts()
   connect()
 })
 
@@ -213,11 +216,26 @@ function handleMessage(msg: any) {
     pushPoint(sym, msg.ts, msg.price)
     updateCharts()
   } else if (msg.type === 'alert') {
+    const id = `${msg.symbol}-${msg.alert_type}-${msg.ts}-${msg.magnitude}`
+    if (alerts.find((a) => a.id === id)) return
     alerts.unshift({
       ...msg,
-      id: `${msg.symbol}-${msg.alert_type}-${msg.ts}-${msg.magnitude}`
+      id
     })
     if (alerts.length > 50) alerts.pop()
+    scheduleRefreshOnAlert()
+  }
+}
+
+async function fetchInitialAlerts() {
+  if (!alertApiUrl) return
+  try {
+    const res = await fetch(alertApiUrl)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    if (Array.isArray(data.alerts)) hydrateAlerts(data.alerts)
+  } catch (err) {
+    console.error('Failed to fetch initial alerts', err)
   }
 }
 
@@ -345,8 +363,23 @@ function pctOrDash(v: number | null | undefined) {
   return formatPct(v)
 }
 
+function scheduleRefreshOnAlert() {
+  if (refreshTimer) return
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null
+    window.location.reload()
+  }, 300)
+}
+
 function buildWsUrl() {
   return `wss://ws.flowbyte.me`
+}
+
+function buildAlertApiUrl() {
+  const ws = buildWsUrl()
+  if (ws.startsWith('wss://')) return ws.replace('wss://', 'https://') + '/alerts/recent'
+  if (ws.startsWith('ws://')) return ws.replace('ws://', 'http://') + '/alerts/recent'
+  return ''
 }
 
 
