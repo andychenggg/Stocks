@@ -17,9 +17,10 @@ def summary_run():
     big_text = history_list_to_text(history_items, username_dict)
     to_summary_text = summary_prompt + big_text
     # model = "gemini-2.5-pro"
+    model = "gemini-3-flash-preview"
     # model = "Qwen/Qwen3-VL-32B-Instruct"
     # model = "gemini-3-pro-preview"
-    model = "Pro/deepseek-ai/DeepSeek-V3.2"
+    # model = "Pro/deepseek-ai/DeepSeek-V3.2"
     summary = get_response(to_summary_text, model=model)
 
     save_to_md(
@@ -32,46 +33,46 @@ def summary_run():
     
     now_pst = datetime.datetime.now(pytz.UTC).astimezone(pytz.timezone('America/Los_Angeles'))
     # Git 推送
-    # os.system(f'cd . && git add docs/ && git commit -m "Auto update: ' + now_pst.strftime("%Y-%m-%d %H:%M:%S PST") + '" && git push origin master')
-    os.system(
-        '''
-        BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        STASHED=0
-        if [ -n "$(git status --porcelain)" ]; then
-        git stash push -u -m "auto-update pre-switch"
-        STASHED=1
-        fi
-        git switch master
-        git add docs/
-        git commit -m "Auto update: <timestamp>"
-        git push origin master
-        git switch "$BRANCH"
-        if [ "$STASHED" = 1 ]; then
-        git stash pop --index || true
-        fi
-        '''
-    )
+    os.system(f'cd . && git add docs/ && git commit -m "Auto update: ' + now_pst.strftime("%Y-%m-%d %H:%M:%S PST") + '" && git push origin master')
+    # os.system(
+    #     '''
+    #     BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    #     STASHED=0
+    #     if [ -n "$(git status --porcelain)" ]; then
+    #     git stash push -u -m "auto-update pre-switch"
+    #     STASHED=1
+    #     fi
+    #     git switch master
+    #     git add docs/
+    #     git commit -m "Auto update: <timestamp>"
+    #     git push origin master
+    #     git switch "$BRANCH"
+    #     if [ "$STASHED" = 1 ]; then
+    #     git stash pop --index || true
+    #     fi
+    #     '''
+    # )
 
 if __name__ == "__main__":
     
     hours_open = hours_from_open()
     hours_close = hours_from_close()
     
-    # 判断是否应该执行
-    # if 4 <= hours_close < 5:
-    #     # 盘后总结  
-    #     pass
-    # elif 0 <= hours_close < 2:
-    #     # 收盘总结
-    #     pass
-    # elif -1 <= hours_open < 7 and hours_close < 1:
-    #     # 盘前/盘中总结
-    #     pass
-    # else:
-    #     # 休市，检查是否是美东9点
-    #     now_et = datetime.datetime.now(pytz.timezone('America/New_York'))
-    #     logger.info(f"当前美东时间小时：{now_et.hour}")
-    #     if now_et.hour != 9:
-    #         exit(0)
+    # # 判断是否应该执行
+    if 4 <= hours_close < 5:
+        # 盘后总结  
+        pass
+    elif 0 <= hours_close < 2:
+        # 收盘总结
+        pass
+    elif -1 <= hours_open < 7 and hours_close < 1:
+        # 盘前/盘中总结
+        pass
+    else:
+        # 休市，检查是否是美东9点
+        now_et = datetime.datetime.now(pytz.timezone('America/New_York'))
+        logger.info(f"当前美东时间小时：{now_et.hour}")
+        if now_et.hour != 7:
+            exit(0)
     
     summary_run()
