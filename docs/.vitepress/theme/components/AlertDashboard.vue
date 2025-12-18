@@ -449,7 +449,7 @@ function fmtTs(ts: number) {
 function formatWithTz(ts: number, opts: Intl.DateTimeFormatOptions) {
   const tzKey = selectedTz.value
   const tz = tzOptionMap[tzKey]?.timeZone || 'UTC'
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     ...opts,
     hour12: false
@@ -472,7 +472,12 @@ function pctOrDash(v: number | null | undefined) {
 }
 
 function anchorPrice(a: any) {
-  return a?.reference?.anchor_price ?? a?.reference?.peak_price ?? a?.reference?.high ?? null
+  const anchor = a?.reference?.anchor_price
+  if (anchor !== undefined && anchor !== null) return anchor
+  if (a?.alert_type === 'rapid_rebound') {
+    return a?.reference?.low ?? null
+  }
+  return a?.reference?.peak_price ?? a?.reference?.high ?? null
 }
 
 function anchorTs(a: any) {
@@ -511,8 +516,24 @@ function moveFromAnchor(a: any) {
   if (a?.reference?.move_from_anchor !== undefined && a?.reference?.move_from_anchor !== null) {
     return a.reference.move_from_anchor
   }
-  if (a?.alert_type === 'rapid_drop') return a?.reference?.drop_from_peak ?? null
-  if (a?.alert_type === 'rapid_rebound') return a?.reference?.rise_from_trough ?? null
+  if (a?.alert_type === 'rapid_drop') {
+    const drop = a?.reference?.drop_from_peak
+    if (drop !== undefined && drop !== null) return drop
+    const open = a?.reference?.open
+    const anchor = anchorPrice(a)
+    const current = triggerPrice(a)
+    if (open === null || open === undefined || open === 0 || anchor === null || current === null) return null
+    return (anchor - current) / open
+  }
+  if (a?.alert_type === 'rapid_rebound') {
+    const rise = a?.reference?.rise_from_trough
+    if (rise !== undefined && rise !== null) return rise
+    const open = a?.reference?.open
+    const anchor = anchorPrice(a)
+    const current = triggerPrice(a)
+    if (open === null || open === undefined || open === 0 || anchor === null || current === null) return null
+    return (current - anchor) / open
+  }
   return null
 }
 
