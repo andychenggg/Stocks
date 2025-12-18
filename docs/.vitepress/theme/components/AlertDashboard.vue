@@ -63,6 +63,23 @@
         </div>
       </div>
     </section>
+    <Transition name="fade">
+      <div v-if="showWelcomeModal" class="modal-backdrop">
+        <div class="modal-content">
+          <div class="modal-icon">🔔</div>
+          <h2>开启实时监控</h2>
+          <p>
+            为了确保您不会错过任何行情波动，本页面需要启用<strong>音频播放</strong>与<strong>系统通知</strong>权限。
+          </p>
+          <div class="modal-example">
+            <span>⚠️ 将在检测到异常波动时发出警报</span>
+          </div>
+          <button class="btn-primary" @click="enableAndEnter">
+            开启警报并进入
+          </button>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -117,13 +134,14 @@ symbols.forEach((sym) => {
 const connectionLabel = computedLabel()
 const connectionClass = computedClass()
 const currentTzLabel = computed(() => tzOptionMap[selectedTz.value]?.label ?? 'UTC+0')
-
+const showWelcomeModal = ref(true)
 onMounted(async () => {
   await loadEcharts()
   initCharts()
   fetchInitialAlerts()
   connect()
 })
+
 
 onBeforeUnmount(() => {
   cleanupWs()
@@ -223,6 +241,64 @@ function scheduleReconnect() {
   }, 3000)
 }
 
+// handle sound alert 
+let audio: HTMLAudioElement | null = null;
+async function enableAndEnter() {
+  showWelcomeModal.value = false
+  playAlertSound()
+  await requestAndShowTestNotification()
+}
+async function requestAndShowTestNotification() {
+  if (!("Notification" in window)) return
+
+  let permission = Notification.permission
+  if (permission !== "granted") {
+    permission = await Notification.requestPermission()
+  }
+
+  // 如果获得权限，发送一条测试通知
+  if (permission === "granted") {
+    new Notification("系统就绪", {
+      body: "您的浏览器通知与音频警报已开启。",
+      icon: "https://cryptologos.cc/logos/bitcoin-btc-logo.png" 
+    })
+  }
+}
+// 在 onMounted 中初始化（或在第一次播放时初始化）
+function playAlertSound() {
+  if (!audio) {
+    audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+  }
+  audio.currentTime = 0; 
+  audio.play().catch(e => {
+    console.warn('音频播放失败 (可能是因为用户尚未与页面交互)', e);
+  });
+}
+
+async function showNativeNotification(msg: any) {
+  // 如果浏览器不支持或用户未授权，直接返回
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  // 格式化数据用于显示
+  const symbol = msg.symbol;
+  const typeText = badge(msg.alert_type); 
+  const change = moveFromAnchor(msg);
+  const price = formatPrice(triggerPrice(msg));
+
+  // 构建通知内容
+  const title = `🚨 ${symbol} ${typeText}`;
+  const body = `现价: ${price}\n波动: ${pctOrDash(change)} (阈值 ${(msg.magnitude * 100).toFixed(1)}%)`;
+
+  // 发送通知
+  new Notification(title, {
+    body: body,
+    icon: '/logo.png', 
+    tag: msg.id,
+    requireInteraction: true
+  });
+}
+
 function handleMessage(msg: any) {
   if (msg.type === 'snapshot' && msg.data) {
     Object.entries(msg.data).forEach(([sym, payload]) => {
@@ -243,12 +319,12 @@ function handleMessage(msg: any) {
   } else if (msg.type === 'alert') {
     const id = `${msg.symbol}-${msg.alert_type}-${msg.ts}-${msg.magnitude}`
     if (alerts.find((a) => a.id === id)) return
-    alerts.unshift({
-      ...msg,
-      id
-    })
+    const newAlert = { ...msg, id }
+    alerts.unshift(newAlert)
     if (alerts.length > 50) alerts.pop()
-    scheduleRefreshOnAlert()
+    // scheduleRefreshOnAlert()
+    playAlertSound()
+    showNativeNotification(newAlert)
   }
 }
 
@@ -694,5 +770,111 @@ h1 {
     width: 100%;
     justify-content: space-between;
   }
+}
+
+/* --- 弹窗样式 --- */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px); /* 背景磨砂模糊 */
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: var(--vp-c-bg); /* 使用现有变量，或改为 #1e1e20 */
+  border: 1px solid var(--vp-c-divider);
+  padding: 32px;
+  border-radius: 24px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  background: var(--vp-c-bg-soft);
+  width: 80px;
+  height: 80px;
+  line-height: 80px;
+  border-radius: 50%;
+  border: 1px solid var(--vp-c-divider);
+}
+
+.modal-content h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  background: linear-gradient(120deg, #16c784, #00b2ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.modal-content p {
+  color: var(--vp-c-text-2);
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-example {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #16c784, #0caadc);
+  color: white;
+  border: none;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(22, 199, 132, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(22, 199, 132, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* 动画效果 */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
