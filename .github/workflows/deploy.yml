@@ -9,6 +9,10 @@ on:
     branches: [master]
     paths:
       - 'docs/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'docs/**'
 
   # 允许你从 Actions 选项卡手动运行此工作流程
   workflow_dispatch:
@@ -29,6 +33,9 @@ jobs:
   # 构建工作
   build:
     runs-on: ubuntu-latest
+    env:
+      # Inject Binance alert WS endpoint for front-end without committing plaintext.
+      VITE_ALERT_WS_URL: ${{ secrets.ALERT_WS_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +50,15 @@ jobs:
           cache: npm # 或 pnpm / yarn
       - name: Setup Pages
         uses: actions/configure-pages@v4
+      - name: Write frontend .env (masked, optional)
+        run: |
+          if [ -n "${VITE_ALERT_WS_URL}" ]; then
+            echo "::add-mask::${VITE_ALERT_WS_URL}"
+            # VitePress 会读取根目录 .env 中的 VITE_* 变量，供前端使用
+            echo "VITE_ALERT_WS_URL=${VITE_ALERT_WS_URL}" > .env
+          else
+            echo "VITE_ALERT_WS_URL is empty; skipping .env write (will fallback to host/port defaults)"
+          fi
       - name: Install dependencies
         run: npm ci # 或 pnpm install / yarn install / bun install
       - name: Build with VitePress
@@ -55,6 +71,8 @@ jobs:
 
   # 部署工作
   deploy:
+    # 仅在 push 时部署，避免 PR 环境保护规则阻塞
+    if: github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

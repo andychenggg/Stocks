@@ -118,7 +118,7 @@ def get_summary_config() -> Tuple[int, bool, str]:
         else:
             return 300, False, "盘中小时总结",f"盘中总结（开盘后 {hours_open} 小时）"
     # 场景1：休市/周末
-    return 200, False, "休市总结", "休市总结（非交易时段）"
+    return 1000, True, "休市总结", "休市总结（非交易时段）"
 
 
 if __name__ == "__main__":
