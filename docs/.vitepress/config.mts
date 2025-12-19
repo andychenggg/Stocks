@@ -29,7 +29,7 @@ export default defineConfig({
     nav: [
       { text: '首页', link: '/' },
       { text: '历史总结', link: '/summaries/' },
-      { text: '币预警', link: '/alerts/' }
+      { text: '币预警（Beta）', link: '/alerts/' }
     ],
 
     // 🔥 侧边栏：只有 summaries 才需要
