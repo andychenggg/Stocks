@@ -26,7 +26,7 @@
           <strong>开启预警声音</strong>
           <span>点击后会播放一次提示音，后续预警自动响</span>
         </div>
-        <button class="audio-btn" @click="enableAudio">确认开启</button>
+        <button class="audio-btn" @click="enableAudio">确认提示音</button>
       </div>
 
       <section class="cards-grid">
@@ -162,7 +162,8 @@ const connectionState = ref<'connecting' | 'open' | 'closed'>('connecting')
 let alertAudio: HTMLAudioElement | null = null
 const ALERT_AUDIO_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
 const audioEnabled = ref(false)
-const showAudioPrompt = computed(() => !audioEnabled.value)
+// const showAudioPrompt = computed(() => !audioEnabled.value)
+const showAudioPrompt = true
 
 const connectionLabel = computed(() => connectionState.value === 'open' ? '实时连接' : '连接中...')
 const connectionClass = computed(() => ({ live: connectionState.value === 'open', down: connectionState.value === 'closed' }))
