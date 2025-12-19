@@ -21,6 +21,14 @@
         </div>
       </header>
 
+      <div v-if="showAudioPrompt" class="audio-banner">
+        <div class="audio-text">
+          <strong>开启预警声音</strong>
+          <span>点击后会播放一次提示音，后续预警自动响</span>
+        </div>
+        <button class="audio-btn" @click="enableAudio">确认开启</button>
+      </div>
+
       <section class="cards-grid">
         <div v-for="sym in symbols" :key="sym" class="crypto-card">
           <div class="card-content">
@@ -153,6 +161,8 @@ let echartsLib: any = null
 const connectionState = ref<'connecting' | 'open' | 'closed'>('connecting')
 let alertAudio: HTMLAudioElement | null = null
 const ALERT_AUDIO_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
+const audioEnabled = ref(false)
+const showAudioPrompt = computed(() => !audioEnabled.value)
 
 const connectionLabel = computed(() => connectionState.value === 'open' ? '实时连接' : '连接中...')
 const connectionClass = computed(() => ({ live: connectionState.value === 'open', down: connectionState.value === 'closed' }))
@@ -185,7 +195,7 @@ onMounted(async () => {
   }
   connect()
   initAlertAudio()
-  playAlertSound()
+  audioEnabled.value = window?.localStorage?.getItem('alert-audio-enabled') === '1'
 })
 
 async function loadEcharts() {
@@ -416,7 +426,6 @@ function connect() {
   ws = new WebSocket(resolveWsUrl())
   ws.onopen = () => {
     connectionState.value = 'open'
-    playAlertSound()
   }
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data))
   ws.onclose = () => { connectionState.value = 'closed'; setTimeout(connect, 3000) }
@@ -439,12 +448,21 @@ function initAlertAudio() {
 }
 
 function playAlertSound() {
+  if (!audioEnabled.value) return
   initAlertAudio()
   if (!alertAudio) return
   alertAudio.currentTime = 0
   alertAudio.play().catch(() => {
     // Autoplay may be blocked until user interaction.
   })
+}
+
+function enableAudio() {
+  audioEnabled.value = true
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('alert-audio-enabled', '1')
+  }
+  playAlertSound()
 }
 
 onBeforeUnmount(() => { ws?.close(); charts.forEach(c => c.dispose()) })
@@ -479,6 +497,11 @@ h1 { font-size: 32px; font-weight: 800; margin: 0; }
 .connection .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
 .connection.live .dot { background: var(--up-color); box-shadow: 0 0 8px var(--up-color); }
 .fancy-select { border: 1px solid var(--border-color); padding: 8px; border-radius: 12px; outline: none; background: #fff; cursor: pointer; font-weight: 600; }
+
+.audio-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px dashed var(--border-color); border-radius: 12px; background: #fff; margin-bottom: 20px; }
+.audio-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-sub); }
+.audio-text strong { color: var(--text-main); font-weight: 800; font-size: 14px; }
+.audio-btn { border: none; background: var(--up-color); color: #fff; font-weight: 700; font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
 
 /* 价格卡片 */
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 32px; }
