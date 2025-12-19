@@ -1,4 +1,4 @@
-# 财经聊天总结 - 盘后总结（收盘后4-5小时内）
+# 财经聊天总结 - 盘中总结（开盘后 4 小时）
 
     > 北京时间：2025-12-19 09:00:41 CST
 
@@ -6,7 +6,7 @@
 
     > 美东时间：2025-12-18 20:00:41 EST
 
-    > 模型：Pro/deepseek-ai/DeepSeek-V3.2
+    > 模型：gemini-3-flash-preview
 
 代码仓库：[GitHub - finance-community-summary](https://github.com/andychenggg/Stocks) 可以star一下，方便后续获取更新内容！有问题欢迎提 issue。
 
