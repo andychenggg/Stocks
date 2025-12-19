@@ -180,7 +180,9 @@ onMounted(async () => {
   chartEls.forEach((el, sym) => {
     if (!charts.has(sym)) initSingleChart(sym, el)
   })
-  fetchInitialAlerts()
+  if (shouldFetchInitialAlerts()) {
+    fetchInitialAlerts()
+  }
   connect()
   initAlertAudio()
   playAlertSound()
@@ -402,6 +404,14 @@ function resolveAlertsUrl() {
   return 'https://ws.flowbyte.me/alerts/recent'
 }
 
+function shouldFetchInitialAlerts() {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('http')) return true
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1'
+}
+
 function connect() {
   ws = new WebSocket(resolveWsUrl())
   ws.onopen = () => {
@@ -413,6 +423,7 @@ function connect() {
 }
 
 async function fetchInitialAlerts() {
+  if (!shouldFetchInitialAlerts()) return
   try {
     const res = await fetch(resolveAlertsUrl())
     const data = await res.json()
