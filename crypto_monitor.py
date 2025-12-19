@@ -23,6 +23,8 @@ import asyncio
 import datetime as dt
 import json
 import logging
+import os
+import random
 import sqlite3
 import time
 from collections import deque
@@ -56,11 +58,12 @@ TIMEZONE_KEYS = {
     "beijing": "Asia/Shanghai",
 }
 
-CLIENT_WS_HOST = "127.0.0.1"
-CLIENT_WS_PORT = 8765
-HTTP_HOST = "0.0.0.0"
-HTTP_PORT = 8080
+CLIENT_WS_HOST = os.getenv("CLIENT_WS_HOST", "127.0.0.1")
+CLIENT_WS_PORT = int(os.getenv("CLIENT_WS_PORT", "8765"))
+HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
+HTTP_PORT = int(os.getenv("HTTP_PORT", "8080"))
 DB_PATH = "crypto_monitor.db"
+STUB_MODE = os.getenv("STUB_MODE", "").lower() in {"1", "true", "yes"}
 
 
 def utc_date_from_ms(ts_ms: int) -> dt.date:
@@ -409,6 +412,7 @@ class MarketMonitor:
         }
         self.last_alert_at: Dict[Tuple[str, str, float], float] = {}
         self.last_price: Dict[str, Optional[float]] = {s: None for s in SYMBOLS}
+        self.recent_alerts: Deque[dict] = deque(maxlen=3)
 
     async def handle_stream_message(self, raw: str) -> None:
         payload = json.loads(raw)
@@ -576,6 +580,7 @@ class MarketMonitor:
             current_pct_from_open=stats["current_pct_from_open"],
             move_from_anchor=move_from_anchor,
         )
+        self.recent_alerts.appendleft(payload)
         await self.broadcaster.broadcast(payload)
         logging.info("Alert emitted: %s", payload)
 
@@ -635,6 +640,82 @@ async def binance_listener(monitor: MarketMonitor) -> None:
             await asyncio.sleep(backoff_sec)
 
 
+def build_stub_stats(
+    open_price: float,
+    current_price: float,
+    threshold: float,
+    alert_type: str,
+    ts_ms: int,
+) -> dict:
+    if alert_type == "rapid_drop":
+        peak_price = current_price * (1 + threshold + 0.001)
+        trough_price = current_price * (1 - 0.001)
+        drop_from_peak = (peak_price - current_price) / open_price
+        rise_from_trough = (current_price - trough_price) / open_price
+    else:
+        trough_price = current_price * (1 - threshold - 0.001)
+        peak_price = current_price * (1 + 0.001)
+        rise_from_trough = (current_price - trough_price) / open_price
+        drop_from_peak = (peak_price - current_price) / open_price
+    return {
+        "window_end": ts_ms,
+        "change_close": (current_price - open_price) / open_price,
+        "change_low": (trough_price - open_price) / open_price,
+        "change_high": (peak_price - open_price) / open_price,
+        "length": WINDOW_SIZE_MINUTES,
+        "reference_open": open_price,
+        "reference_close": current_price,
+        "reference_low": min(trough_price, current_price),
+        "reference_high": max(peak_price, current_price),
+        "peak_price": peak_price,
+        "peak_ts": ts_ms,
+        "peak_pct_from_open": (peak_price - open_price) / open_price,
+        "trough_price": trough_price,
+        "trough_ts": ts_ms,
+        "trough_pct_from_open": (trough_price - open_price) / open_price,
+        "current_price": current_price,
+        "current_ts": ts_ms,
+        "current_pct_from_open": (current_price - open_price) / open_price,
+        "drop_from_peak": drop_from_peak,
+        "rise_from_trough": rise_from_trough,
+    }
+
+
+async def stub_generator(monitor: MarketMonitor) -> None:
+    """Emit synthetic prices and alerts for local testing."""
+    rng = random.Random(42)
+    base_prices = {"btcusdt": 85000.0, "ethusdt": 3000.0}
+    prices = dict(base_prices)
+    open_prices = dict(base_prices)
+    for tz_key, tz_name in TIMEZONE_KEYS.items():
+        day = dt.datetime.now(ZoneInfo(tz_name)).date()
+        for sym in SYMBOLS:
+            monitor.today_key_by_tz[tz_key][sym] = day
+            monitor.today_open_by_tz[tz_key][sym] = prices[sym]
+    last_alert_ms = 0
+    while True:
+        ts_ms = now_ms()
+        for sym in SYMBOLS:
+            drift = prices[sym] * rng.uniform(-0.0006, 0.0006)
+            prices[sym] = max(1.0, prices[sym] + drift)
+            await monitor._publish_price(sym, prices[sym], ts_ms)
+        if ts_ms - last_alert_ms >= 12000:
+            last_alert_ms = ts_ms
+            sym = rng.choice(SYMBOLS)
+            alert_type = rng.choice(["rapid_drop", "rapid_rebound"])
+            threshold = rng.choice(ALERT_THRESHOLDS)
+            stats = build_stub_stats(
+                open_price=open_prices[sym],
+                current_price=prices[sym],
+                threshold=threshold,
+                alert_type=alert_type,
+                ts_ms=ts_ms,
+            )
+            monitor.last_alert_at[(sym, alert_type, threshold)] = 0
+            await monitor._emit_alert(alert_type, threshold, sym, stats)
+        await asyncio.sleep(1)
+
+
 async def retention_worker(store: SQLiteStore) -> None:
     """Periodically prunes data older than retention horizon."""
     while True:
@@ -651,7 +732,7 @@ async def start_client_ws_server(
 ) -> None:
     async def handler(ws: WebSocketServerProtocol) -> None:
         await broadcaster.register(ws)
-        alerts = await monitor.store.fetch_recent_alerts(limit=10)
+        alerts = list(monitor.recent_alerts) or await monitor.store.fetch_recent_alerts(limit=3)
         await broadcaster.send_snapshot(ws, monitor.snapshot(), alerts)
         try:
             async for _ in ws:
@@ -733,13 +814,17 @@ async def main() -> None:
     await store.init()
     broadcaster = BroadcastHub()
     monitor = MarketMonitor(store=store, broadcaster=broadcaster)
-
-    await asyncio.gather(
-        binance_listener(monitor),
+    listeners = [
         retention_worker(store),
         start_client_ws_server(monitor, broadcaster),
         start_http_server(store),
-    )
+    ]
+    if STUB_MODE:
+        listeners.append(stub_generator(monitor))
+    else:
+        listeners.append(binance_listener(monitor))
+
+    await asyncio.gather(*listeners)
 
 
 if __name__ == "__main__":
