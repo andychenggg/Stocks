@@ -769,8 +769,29 @@ async def start_http_server(store: SQLiteStore) -> None:
                 line = await reader.readline()
                 if line in (b"\r\n", b"\n", b""):
                     break
+            if method == "OPTIONS":
+                headers = (
+                    "HTTP/1.1 204 No Content\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
+                    "Access-Control-Max-Age: 600\r\n"
+                    "\r\n"
+                )
+                writer.write(headers.encode())
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                return
             if method != "GET":
-                writer.write(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
+                headers = (
+                    "HTTP/1.1 405 Method Not Allowed\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
+                    "\r\n"
+                )
+                writer.write(headers.encode())
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
@@ -783,11 +804,20 @@ async def start_http_server(store: SQLiteStore) -> None:
                     "Content-Type: application/json\r\n"
                     f"Content-Length: {len(body)}\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
                     "\r\n"
                 )
                 writer.write(headers.encode() + body)
             else:
-                writer.write(b"HTTP/1.1 404 Not Found\r\n\r\n")
+                headers = (
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
+                    "\r\n"
+                )
+                writer.write(headers.encode())
             await writer.drain()
         except Exception:
             logging.exception("HTTP handler error")
