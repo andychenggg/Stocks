@@ -488,25 +488,47 @@ watch(selectedTz, () => {
   color: var(--text-main);
 }
 .container { max-width: 1400px; margin: 0 auto; }
+@media (prefers-color-scheme: dark) {
+  .alerts-page {
+    --primary-bg: #1B1B1F; 
+    --card-bg: #1e293b;    
+    --text-main: #f1f5f9;  
+    --text-sub: #94a3b8;   
+    --border-color: #334155; 
+  }
+  .crypto-card {
+    box-shadow: none;
+    background: #1B1B1F;
+  }
+  .audio-banner {
+    --background: #273449;
+    border-color: #334155;
+  }
 
+}
 /* Header */
 .alerts-hero { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
 h1 { font-size: 32px; font-weight: 800; margin: 0; }
 .brand-dot { color: var(--up-color); }
 .hero-controls { display: flex; gap: 12px; }
-.connection { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fff; border: 1px solid var(--border-color); border-radius: 12px; font-size: 14px; }
-.connection .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
+.connection { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; font-size: 14px; }
+.connection .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-color); }
 .connection.live .dot { background: var(--up-color); box-shadow: 0 0 8px var(--up-color); }
-.fancy-select { border: 1px solid var(--border-color); padding: 8px; border-radius: 12px; outline: none; background: #fff; cursor: pointer; font-weight: 600; }
+.fancy-select { border: 1px solid var(--border-color); padding: 8px; border-radius: 12px; outline: none; background: var(--card-bg); cursor: pointer; font-weight: 600; }
 
-.audio-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px dashed var(--border-color); border-radius: 12px; background: #fff; margin-bottom: 20px; }
+.audio-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px dashed var(--border-color); border-radius: 12px; background: var(--background); margin-bottom: 20px; }
 .audio-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-sub); }
 .audio-text strong { color: var(--text-main); font-weight: 800; font-size: 14px; }
 .audio-btn { border: none; background: var(--up-color); color: #fff; font-weight: 700; font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
 
 /* 价格卡片 */
-.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 32px; }
-.crypto-card { background: #fff; border: 1px solid var(--border-color); border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.crypto-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .card-content { padding: 24px; position: relative; }
 .card-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .symbol-name { font-size: 20px; font-weight: 800; }
@@ -523,7 +545,7 @@ h1 { font-size: 32px; font-weight: 800; margin: 0; }
 .chart { width: 100%; height: 100%; }
 
 /* 预警列表 */
-.alerts-section { background: #fff; border: 1px solid var(--border-color); border-radius: 24px; padding: 24px; }
+.alerts-section { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 24px; padding: 24px; }
 .section-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
 .alert-item { border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 20px; position: relative; padding: 20px; }
 .alert-status-line { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 4px 0 0 4px; }
