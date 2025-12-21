@@ -1,5 +1,5 @@
 <template>
-  <div class="alerts-page">
+  <div class="alerts-page" :class="{ 'is-dark': isDark }">
     <div class="container">
       <header class="alerts-hero">
         <div class="hero-text">
@@ -165,9 +165,48 @@ const audioEnabled = ref(false)
 // const showAudioPrompt = computed(() => !audioEnabled.value)
 const showAudioPrompt = true
 
+const APPEARANCE_KEY = 'vitepress-theme-appearance'
+const appearance = ref<'light' | 'dark' | 'auto'>('auto')
+const prefersDark = ref(false)
+const isDark = computed(() => appearance.value === 'dark' || (appearance.value === 'auto' && prefersDark.value))
+let appearancePoll: number | null = null
+let appearanceMedia: MediaQueryList | null = null
+let appearanceMediaHandler: ((event: MediaQueryListEvent) => void) | null = null
+let appearanceStorageHandler: ((event: StorageEvent) => void) | null = null
+
 const connectionLabel = computed(() => connectionState.value === 'open' ? '实时连接' : '连接中...')
 const connectionClass = computed(() => ({ live: connectionState.value === 'open', down: connectionState.value === 'closed' }))
 const currentTzLabel = computed(() => tzOptionMap[selectedTz.value]?.label ?? 'UTC+0')
+
+function normalizeAppearance(value: string | null): 'light' | 'dark' | 'auto' {
+  return value === 'light' || value === 'dark' || value === 'auto' ? value : 'auto'
+}
+
+function readAppearance() {
+  if (typeof window === 'undefined') return
+  const next = normalizeAppearance(window.localStorage.getItem(APPEARANCE_KEY))
+  if (next !== appearance.value) appearance.value = next
+}
+
+function initAppearanceSync() {
+  if (typeof window === 'undefined') return
+  readAppearance()
+  appearanceMedia = window.matchMedia('(prefers-color-scheme: dark)')
+  prefersDark.value = appearanceMedia.matches
+  appearanceMediaHandler = (event) => {
+    prefersDark.value = event.matches
+  }
+  if (appearanceMedia.addEventListener) {
+    appearanceMedia.addEventListener('change', appearanceMediaHandler)
+  } else if (appearanceMedia.addListener) {
+    appearanceMedia.addListener(appearanceMediaHandler)
+  }
+  appearanceStorageHandler = (event) => {
+    if (event.key === APPEARANCE_KEY) readAppearance()
+  }
+  window.addEventListener('storage', appearanceStorageHandler)
+  appearancePoll = window.setInterval(readAppearance, 1000)
+}
 
 function setChartRef(sym: string) {
   return (el: HTMLElement | null) => {
@@ -187,6 +226,7 @@ function initSingleChart(sym: string, el: HTMLElement) {
 }
 
 onMounted(async () => {
+  initAppearanceSync()
   await loadEcharts()
   chartEls.forEach((el, sym) => {
     if (!charts.has(sym)) initSingleChart(sym, el)
@@ -466,7 +506,21 @@ function enableAudio() {
   playAlertSound()
 }
 
-onBeforeUnmount(() => { ws?.close(); charts.forEach(c => c.dispose()) })
+onBeforeUnmount(() => {
+  ws?.close()
+  charts.forEach(c => c.dispose())
+  if (appearanceMedia && appearanceMediaHandler) {
+    if (appearanceMedia.removeEventListener) {
+      appearanceMedia.removeEventListener('change', appearanceMediaHandler)
+    } else if (appearanceMedia.removeListener) {
+      appearanceMedia.removeListener(appearanceMediaHandler)
+    }
+  }
+  if (typeof window !== 'undefined') {
+    if (appearancePoll !== null) window.clearInterval(appearancePoll)
+    if (appearanceStorageHandler) window.removeEventListener('storage', appearanceStorageHandler)
+  }
+})
 watch(selectedTz, () => {
   updateCharts()
 })
@@ -488,23 +542,20 @@ watch(selectedTz, () => {
   color: var(--text-main);
 }
 .container { max-width: 1400px; margin: 0 auto; }
-@media (prefers-color-scheme: dark) {
-  .alerts-page {
-    --primary-bg: #1B1B1F; 
-    --card-bg: #1e293b;    
-    --text-main: #f1f5f9;  
-    --text-sub: #94a3b8;   
-    --border-color: #334155; 
-  }
-  .crypto-card {
-    box-shadow: none;
-    background: #1B1B1F;
-  }
-  .audio-banner {
-    --background: #273449;
-    border-color: #334155;
-  }
-
+.alerts-page.is-dark {
+  --primary-bg: #1B1B1F; 
+  --card-bg: #1e293b;    
+  --text-main: #f1f5f9;  
+  --text-sub: #94a3b8;   
+  --border-color: #334155; 
+}
+.alerts-page.is-dark .crypto-card {
+  box-shadow: none;
+  background: #1B1B1F;
+}
+.alerts-page.is-dark .audio-banner {
+  --background: #273449;
+  border-color: #334155;
 }
 /* Header */
 .alerts-hero { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
