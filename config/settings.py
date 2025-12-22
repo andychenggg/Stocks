@@ -10,11 +10,28 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load local .env without overriding existing environment variables.
+ENV_FILE = BASE_DIR / ".env"
+
+
+def _load_env_file(path):
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+_load_env_file(ENV_FILE)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -37,10 +54,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
+    'apps.health.apps.HealthConfig',
+    'apps.crypts.apps.CryptsConfig',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'config.middleware.AlertsCorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -67,15 +88,42 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYER_BACKEND = os.getenv(
+    "CHANNEL_LAYER_BACKEND", "channels.layers.InMemoryChannelLayer"
+)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": CHANNEL_LAYER_BACKEND,
+    }
+}
+if CHANNEL_LAYER_BACKEND != "channels.layers.InMemoryChannelLayer":
+    CHANNEL_LAYERS["default"]["CONFIG"] = {
+        "hosts": [os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")]
+    }
 
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.postgresql")
+DB_NAME = os.getenv("DB_NAME", "crypto_monitor")
+
+if DB_ENGINE == "django.db.backends.sqlite3":
+    if not DB_NAME:
+        DB_NAME = str(BASE_DIR / "db.sqlite3")
+    elif DB_NAME != ":memory:" and not Path(DB_NAME).is_absolute():
+        DB_NAME = str(BASE_DIR / DB_NAME)
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': DB_ENGINE,
+        'NAME': DB_NAME,
+        'USER': os.getenv("DB_USER", ""),
+        'PASSWORD': os.getenv("DB_PASSWORD", ""),
+        'HOST': os.getenv("DB_HOST", ""),
+        'PORT': os.getenv("DB_PORT", ""),
     }
 }
 

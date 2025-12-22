@@ -1,0 +1,12 @@
+Django>=5.2,<6.0
+psycopg[binary]>=3.1
+channels>=4.0
+daphne>=4.0
+websockets>=11.0
+requests
+loguru
+openai>=1.0.0
+google-genai
+pandas
+pandas_market_calendars
+pytz

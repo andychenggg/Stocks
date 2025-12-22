@@ -1,0 +1,12 @@
+{
+  "name": "stocks-frontend",
+  "private": true,
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  },
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  }
+}

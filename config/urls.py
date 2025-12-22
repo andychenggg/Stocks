@@ -17,6 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from apps.health.views import db_schema_status
+from apps.crypts.views import alerts_recent
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('health/db/', db_schema_status),
+    path('alerts/recent', alerts_recent),
 ]
