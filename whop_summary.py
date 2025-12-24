@@ -56,7 +56,7 @@ if __name__ == "__main__":
     hours_open = hours_from_open()
     hours_close = hours_from_close()
     
-    # # 判断是否应该执行
+    # 判断是否应该执行
     if 4 <= hours_close < 5:
         # 盘后总结  
         pass
