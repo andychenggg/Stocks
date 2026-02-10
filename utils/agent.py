@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 import time
 from typing import Optional
 from openai import OpenAI
@@ -57,6 +58,26 @@ def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
                 logger.error("重试次数耗尽，仍然失败。")
 
     raise last_err
+
+
+def _sanitize_summary_markdown(summary: str) -> str:
+    if not summary:
+        return summary
+
+    # Some models emit internal reasoning wrapped in <think>...</think> (or similar)
+    # which can break VitePress/Vue compilation when left in markdown.
+    for tag in ("think", "thinking"):
+        summary = re.sub(
+            rf"<{tag}\b[^>]*>.*?</{tag}\s*>",
+            "",
+            summary,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        summary = re.sub(rf"</?{tag}\b[^>]*>", "", summary, flags=re.IGNORECASE)
+
+    return summary.strip() + "\n"
+
+
 def save_to_md(
     summary: str,
     description: str,
@@ -64,6 +85,7 @@ def save_to_md(
     title: Optional[str] = None,
     output_dir: str = "docs",
 ) -> str:
+    summary = _sanitize_summary_markdown(summary)
     # 获取当前时间
     now = datetime.datetime.now()
     date_str = now.strftime("%Y-%m-%d")
