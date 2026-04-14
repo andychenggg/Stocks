@@ -25,14 +25,36 @@
 1. 设置local_secrets,其中包含了whop请求的header和访问模型的api密钥
 
    1. 在utils文件夹下新建local_secrets.py
-   2. 在whop网页中打开开发者模式，在**网络**中找到``https://whop.com/api/graphql/MessagesFetchFeedPosts/`` 请求，复制该请求附带的headers，可以让gpt写成字典形式，以如下格式放到local_secrets.py中
+   2. 在whop网页中打开开发者模式，在**网络**中找到``https://whop.com/api/graphql/MessagesFetchFeedPosts/`` 请求，复制该请求附带的 request headers，整理成 Python 字典后放到 `local_secrets.py`。
+   
+      注意：
+      - 不能只保留少量 header，Whop 对请求环境校验比较严格，缺字段时可能返回 `429`。
+      - 除了 `Cookie` 之外，`accept`、`accept-language`、`origin`、`referer`、`user-agent`、`sec-fetch-*`、`sec-ch-ua*`、`sentry-trace`、`baggage`、`traceparent`、`tracestate`、`newrelic`、`x-deployment-id`、`x-whop-force-new-permission-system` 这类头也建议一并保留。
+      - 不要把浏览器里的 HTTP/2 伪首部原样抄进来，例如 `:authority`、`:method`、`:path`、`:scheme`，`requests` 不需要这些。
+      - `content-length` 也不要手工填写，交给 `requests` 自动生成。
+      - 如果后续重新出现 `429`，优先检查 `Cookie`、`cf_clearance`、`whop-core.access-token` 这些会话字段是否已过期。
 
    ```python
    whom_headers = {
+      'accept': '*/*',
+      'accept-encoding': 'gzip, deflate, br, zstd',
+      'accept-language': 'en,zh-CN;q=0.9,zh;q=0.8',
       'baggage': '',
+      'newrelic': '',
       'dpr': '',
+      'origin': 'https://whop.com',
       'priority': '',
+      'referer': 'https://whop.com/joined/stock-and-option/.../app/',
+      'sec-ch-ua': '',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
       'sentry-trace': '',
+      'traceparent': '',
+      'tracestate': '',
+      'user-agent': '',
       'x-deployment-id': '',
       'x-whop-force-new-permission-system': '',
       'Cookie': '',
@@ -40,7 +62,19 @@
    }
    ```
 
-   3. 再设置api密钥，支持google和openai格式的请求，在local_secrets.py中按照如下格式填写
+   3. 可以先单独验证 headers 是否有效，再跑完整总结流程。只要下面这段脚本返回 `200`，通常就说明 `MessagesFetchFeedPosts` 至少已经能打通：
+
+   ```python
+   import requests
+   from utils.local_secrets import whom_headers
+   from utils.message_utils import url, get_payload
+
+   resp = requests.post(url, headers=whom_headers, data=get_payload(5, None), timeout=30)
+   print(resp.status_code)
+   print(resp.text[:300])
+   ```
+
+   4. 再设置api密钥，支持google和openai格式的请求，在local_secrets.py中按照如下格式填写
 
    ```python
       model_key = [

@@ -19,6 +19,7 @@ from .local_secrets import model_key
 def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
     logger.info(f"正在使用模型 {model} 生成总结...")
     selected_config = next((item for item in model_key if item['model'] == model), None)
+    # print(selected_config)
     app = selected_config['app']
     client = None
     
