@@ -44,6 +44,13 @@ export default defineConfig({
       // 首页 / 不需要 sidebar，因此不写 '/'
     },
 
+    search: {
+      provider: 'local',
+      options: {
+        detailedView: true
+      }
+    },
+
     socialLinks: [
       { icon: 'github', link: 'https://github.com/andychenggg/Stocks' }
     ]
