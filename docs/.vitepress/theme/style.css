@@ -6,11 +6,18 @@
   background: var(--vp-c-bg-soft);
 }
 
-.serenity-tweet-time {
+.serenity-tweet-index {
   margin-bottom: 8px;
   color: var(--vp-c-text-2);
   font-size: 13px;
   font-weight: 600;
+}
+
+.serenity-tweet-time {
+  margin-bottom: 10px;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .serenity-tweet-text {
