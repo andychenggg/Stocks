@@ -1,0 +1,20 @@
+.serenity-tweet {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+}
+
+.serenity-tweet-time {
+  margin-bottom: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.serenity-tweet-text {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
