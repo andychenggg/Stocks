@@ -29,8 +29,8 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: 'serenity总结', link: '/serenity-summaries/' },
       { text: '历史总结', link: '/summaries/' },
+      { text: 'serenity总结', link: '/serenity-summaries/' },
       { text: '经验总结', link: '/trading-experiences/' },
       { text: '币预警（Beta）', link: '/alerts/' }
     ],
