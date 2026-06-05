@@ -18,8 +18,9 @@ def summary_run():
     to_summary_text = summary_prompt + big_text
     # model = "gemini-2.5-pro"
     # model = "gemini-3-flash-preview"
-    model = "deepseek-v4-flash"
+    # model = "deepseek-v4-flash"
     # model = "qwen3.5-plus"
+    model = "openai-codex"
     summary = get_response(to_summary_text, model=model)
 
     save_to_md(

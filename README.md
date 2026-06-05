@@ -1,164 +1,250 @@
-# 群组消息实时总结
+# 财经社区总结与预警站
 
-> 让群聊里的高价值信息不再被刷屏淹没。
-> 1 分钟追上讨论进度，快速定位共识、分歧与下一步行动 🚀。
-> 比特币波动在线预警，**声音**提示，提醒你及时操作
+线上站点：https://stock.autoin.me/
 
-🔗 **线上站点（实时更新）**
+这个仓库维护三个生产流程：
 
-👉 https://stock.autoin.me/
+- Whop 财经群聊天抓取、LLM 总结、静态站点发布。
+- Serenity X 博主发帖抓取、原文归档、LLM 总结、静态站点发布。
+- Binance 加密货币实时监控、预警持久化、HTTP/WebSocket 服务。
 
-## ⏱ 更新规律
+静态站点使用 VitePress，内容主要写入 `docs/`，GitHub Pages 部署由 `.github/workflows/deploy.yml` 触发。
 
-站点会根据市场开盘情况自动更新：
+## 更新规律
 
-- **非交易时段**：每 **3 小时** 生成一次总结  
-- **开盘前 1 小时 + 开盘期间**：每 **1 小时** 总结一次  
-- **收盘后**：**立刻**总结过去 **24 小时** 的消息记录  
+Whop 群聊总结由 `whop_summary.py` 根据美股市场时段决定总结模式：
 
-（如果你希望调整策略或频率，欢迎提 issue 讨论）
+- 非交易时段：约每 3 小时生成一次总结。
+- 开盘前 1 小时和开盘期间：约每 1 小时生成一次总结。
+- 收盘后：总结过去 24 小时消息。
 
-## 本地部署
+Serenity X 总结由外部 cron 控制，每天美东时间 9:00 运行一次即可，不依赖美股是否开盘。
 
-### 定时总结
+Crypto 预警服务是常驻进程，运行期间持续监听 Binance 行情并向前端/HTTP 接口提供最近预警。
 
-1. 设置local_secrets,其中包含了whop请求的header和访问模型的api密钥
+## 站点输出
 
-   1. 在utils文件夹下新建local_secrets.py
-   2. 在whop网页中打开开发者模式，在**网络**中找到``https://whop.com/api/graphql/MessagesFetchFeedPosts/`` 请求，复制该请求附带的 request headers，整理成 Python 字典后放到 `local_secrets.py`。
-   
-      注意：
-      - 不能只保留少量 header，Whop 对请求环境校验比较严格，缺字段时可能返回 `429`。
-      - 除了 `Cookie` 之外，`accept`、`accept-language`、`origin`、`referer`、`user-agent`、`sec-fetch-*`、`sec-ch-ua*`、`sentry-trace`、`baggage`、`traceparent`、`tracestate`、`newrelic`、`x-deployment-id`、`x-whop-force-new-permission-system` 这类头也建议一并保留。
-      - 不要把浏览器里的 HTTP/2 伪首部原样抄进来，例如 `:authority`、`:method`、`:path`、`:scheme`，`requests` 不需要这些。
-      - `content-length` 也不要手工填写，交给 `requests` 自动生成。
-      - 如果后续重新出现 `429`，优先检查 `Cookie`、`cf_clearance`、`whop-core.access-token` 这些会话字段是否已过期。
+- Whop 最新总结：`docs/index.md`
+- Whop 历史总结：`docs/summaries/`
+- Serenity 历史总结：`docs/serenity-summaries/`
+- 交易经验总结：`docs/trading-experiences/`
+- Crypto 预警页面：`docs/alerts/`
 
-   ```python
-   whom_headers = {
-      'accept': '*/*',
-      'accept-encoding': 'gzip, deflate, br, zstd',
-      'accept-language': 'en,zh-CN;q=0.9,zh;q=0.8',
-      'baggage': '',
-      'newrelic': '',
-      'dpr': '',
-      'origin': 'https://whop.com',
-      'priority': '',
-      'referer': 'https://whop.com/joined/stock-and-option/.../app/',
-      'sec-ch-ua': '',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"macOS"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'sentry-trace': '',
-      'traceparent': '',
-      'tracestate': '',
-      'user-agent': '',
-      'x-deployment-id': '',
-      'x-whop-force-new-permission-system': '',
-      'Cookie': '',
-      'content-type': 'application/json'
-   }
-   ```
+Serenity 顶部导航只使用一个 tab：`serenity总结`，直接进入 `docs/serenity-summaries/`。每篇 Serenity 总结页先展示原文记录，每条原文包含北京时间、美西时间、美东时间和 tweet text，然后展示 AI 总结。
 
-   3. 可以先单独验证 headers 是否有效，再跑完整总结流程。只要下面这段脚本返回 `200`，通常就说明 `MessagesFetchFeedPosts` 至少已经能打通：
+## 本地安装
 
-   ```python
-   import requests
-   from utils.local_secrets import whom_headers
-   from utils.message_utils import url, get_payload
+Python 依赖：
 
-   resp = requests.post(url, headers=whom_headers, data=get_payload(5, None), timeout=30)
-   print(resp.status_code)
-   print(resp.text[:300])
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-   4. 再设置api密钥，支持google和openai格式的请求，在local_secrets.py中按照如下格式填写
+站点依赖：
 
-   ```python
-      model_key = [
-        {
-           'model': "Pro/deepseek-ai/DeepSeek-V3.2", #使用的模型，这里是deepseek
-           "key": "密钥",
-           "base_url": "https://api.siliconflow.cn/v1", # 如果使用了转发，需要填写baseurl，这里是硅基流动
-           "app": "openai" # 使用openai库进行访问
-        },
-        {
-           'model': "gemini-2.5-pro", #使用的模型
-           'key': "google 密钥",
-           'app': "google" # 使用google库进行访问
-        },
-      ]
-   ```
+```bash
+npm ci
+```
 
-2. 设置程序，每1小时运行仓库中的脚本``sh/run.sh``
-3. 运行whop_summary.py即可进行总结
+本地预览站点：
 
-### btc预警
+```bash
+npm run docs:dev
+```
 
-1. 运行crypto_monitor.py即可
+构建站点：
 
-## ✨ 这是什么？
+```bash
+npm run docs:build
+```
 
-这是一个为**群内财经讨论**做**实时总结**的网站。
+## 配置密钥
 
-无论你是：
+本地密钥放在 `utils/local_secrets.py`。该文件已被 `.gitignore` 忽略，不要提交真实密钥。
 
-- 刚进群想补课的新朋友  
-- 错过了关键讨论的群成员  
-- 想快速回顾重点、整理思路的人  
+### 模型密钥
 
-都可以在这里用极短时间**掌握群聊精华**。
+`utils/agent.py` 通过 `model_key` 选择 OpenAI 兼容接口或 Google Gemini：
 
-## ✅ 你会看到什么？
+```python
+model_key = [
+    {
+        "model": "deepseek-v4-flash",
+        "key": "密钥",
+        "base_url": "https://example.com/v1",
+        "app": "openai",
+    },
+    {
+        "model": "gemini-2.5-pro",
+        "key": "google 密钥",
+        "app": "google",
+    },
+]
+```
 
-每次总结都会输出：
+### Whop 请求配置
 
-- **讨论的核心结论**（发生了什么、结论是什么）  
-- **关键共识 / 分歧点**（大家达成一致的地方 & 争议焦点）  
-- **可执行的下一步**（接下来能做什么、该关注什么）  
+在 Whop 网页中打开开发者工具，在 Network 中找到：
 
-目标是把群里一小时/一天的聊天，压缩成**好读、好找、好回溯的内容**。  
-🌊 聊天流 ➜ 💎 结构化沉淀
+```text
+https://whop.com/api/graphql/MessagesFetchFeedPosts/
+```
 
+复制该请求的 request headers，整理成 Python 字典后写入 `utils/local_secrets.py`：
 
-## 🧠 为什么你可能会喜欢它？
+```python
+whom_headers = {
+    "accept": "*/*",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "baggage": "",
+    "newrelic": "",
+    "dpr": "",
+    "origin": "https://whop.com",
+    "priority": "",
+    "referer": "https://whop.com/joined/stock-and-option/.../app/",
+    "sec-ch-ua": "",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"macOS"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "sentry-trace": "",
+    "traceparent": "",
+    "tracestate": "",
+    "user-agent": "",
+    "x-deployment-id": "",
+    "x-whop-force-new-permission-system": "",
+    "Cookie": "",
+    "content-type": "application/json",
+}
+```
 
-它解决了社区聊天中最真实的痛点：
+注意：
 
-- 群聊太快，爬楼太累 😵‍💫  
-- 热点话题回头找不到 😭  
-- 新人完全不知道从哪补课 🫠  
-- 重要结论被无关刷屏冲掉 🤡  
+- Whop 对请求环境校验较严格，缺少浏览器请求头时可能返回 `429`。
+- `Cookie`、`cf_clearance`、`whop-core.access-token` 等会话字段过期后需要重新捕获。
+- 不要复制 HTTP/2 伪首部，例如 `:authority`、`:method`、`:path`、`:scheme`。
+- 不要手工填写 `content-length`，让 `requests` 自动生成。
 
-这个站点的目标很简单：
+可以用下面脚本验证 Whop headers：
 
-> **让每一段好的讨论都能留下痕迹。**
+```python
+import requests
+from utils.local_secrets import whom_headers
+from utils.message_utils import url, get_payload
 
+resp = requests.post(url, headers=whom_headers, data=get_payload(5, None), timeout=30)
+print(resp.status_code)
+print(resp.text[:300])
+```
 
-## ⭐ 支持项目
+### Serenity X 请求配置
 
-如果你觉得有用，欢迎点个 Star！  
-这会给我很大动力继续优化 ❤️
+Serenity 抓取使用 X GraphQL `UserTweets` 接口。将浏览器会话中捕获到的配置写入 `utils/local_secrets.py`：
 
+```python
+serenity_x_config = {
+    "auth_token": "X auth_token cookie",
+    "ct0": "X ct0 cookie / csrf token",
+    "bearer": "X web bearer token",
+    "user_id": "目标账号 user id",
+    "operation_id": "UserTweets operation id",
+    "screen_name": "aleabitoreddit",
+}
+```
 
-## 🐛 反馈 & 贡献
+这些值可能随 X 前端版本或会话过期而失效。若抓取失败，优先重新捕获 `auth_token`、`ct0`、`bearer` 和 `operation_id`。
 
-遇到问题或有改进建议：
+## 运行流程
 
-- 欢迎直接提 Issue  
-- 也可以提交 PR 一起完善  
+### Whop 总结
 
-你的任何建议都会帮助这个工具变得更好！
+手动运行：
 
+```bash
+python whop_summary.py
+```
 
-## 📌 Roadmap
+定时任务 wrapper：
 
-接下来可能会做的方向：
+```bash
+sh/run.sh
+```
 
-- xiaozhaoluck的操作思路总结
-- 股票点位单独放到一个栏目中，可以更加方便的对比
-- 更精准的主题聚类与热点追踪  
-- 优化展现形式  
-- 针对不同内容分开总结
+该脚本会写入 `docs/index.md` 和 `docs/summaries/`，然后执行 `git add docs/ && git commit && git push origin master`。
+
+### Serenity X 总结
+
+手动运行：
+
+```bash
+python serenity_summary.py
+```
+
+定时任务 wrapper：
+
+```bash
+sh/serenity_run.sh
+```
+
+推荐 cron 使用美东时间：
+
+```cron
+TZ=America/New_York
+0 9 * * * /root/code/stocks-deploy/sh/serenity_run.sh
+```
+
+该脚本会更新 `docs/serenity-summaries/`，然后执行 `git add docs/ && git commit && git push origin master`。
+
+Serenity 抓取缓存写入：
+
+```text
+data/serenity_tweets_cache.jsonl
+```
+
+缓存属于运行时数据，不应提交。
+
+### Crypto 预警
+
+运行：
+
+```bash
+python crypto_monitor.py
+```
+
+运行配置来自 `.env`。预警持久化默认使用 `crypto_monitor.db`，前端 WebSocket 地址在 CI 中通过 `VITE_ALERT_WS_URL` 注入，不要把部署密钥硬编码进 tracked 文件。
+
+## 数据与缓存
+
+- Whop posts cache：`data/posts_cache.jsonl`
+- Whop users cache：`data/users_cache.json`
+- Serenity tweets cache：`data/serenity_tweets_cache.jsonl`
+- Crypto SQLite DB：`crypto_monitor.db`
+- 站点构建产物：`docs/.vitepress/dist/`
+
+这些都是运行时或构建产物，除非明确需要，否则不要提交。
+
+## 测试与验证
+
+Python 编译检查：
+
+```bash
+python -m py_compile whop_summary.py serenity_summary.py crypto_monitor.py utils/*.py
+```
+
+VitePress 构建：
+
+```bash
+npm run docs:build
+```
+
+当前自动化测试覆盖较少，`python -m unittest discover test -v` 可能没有有效测试用例。涉及发布逻辑时，应至少验证：
+
+- 没有提交 `.env`、`utils/local_secrets.py`、`data/`、数据库或日志。
+- VitePress 构建通过。
+- 新生成的 markdown 不包含 `<think>` 或 `<thinking>` 标签。
+
+## 贡献与反馈
+
+欢迎提交 Issue 或 PR。修改总结、抓取、发布相关逻辑时，注意该仓库会自动提交并推送 `docs/`，需要确认当前分支、工作树状态和运行时缓存不会污染提交。
