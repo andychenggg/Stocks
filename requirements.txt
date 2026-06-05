@@ -1,4 +1,7 @@
 openai>=1.0.0
 requests
 loguru
-
+pandas
+pandas_market_calendars
+pytz
+google-genai

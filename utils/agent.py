@@ -4,7 +4,7 @@ import re
 import time
 from typing import Optional
 from openai import OpenAI
-from google import genai
+import requests
 from loguru import logger
 import pytz
 from .local_secrets import model_key
@@ -16,25 +16,75 @@ from .local_secrets import model_key
 # client = genai.Client(api_key=openai_api_key)   
 
 
+def _create_responses_api_text(
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+) -> str:
+    response = requests.post(
+        base_url.rstrip("/") + "/responses",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "input": prompt,
+            "temperature": 0.3,
+            "store": False,
+        },
+        timeout=180,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    output_text = data.get("output_text")
+    if output_text:
+        return output_text
+
+    parts = []
+    for item in data.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                parts.append(content["text"])
+    return "\n".join(parts)
+
+
 def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
     logger.info(f"正在使用模型 {model} 生成总结...")
     selected_config = next((item for item in model_key if item['model'] == model), None)
-    # print(selected_config)
+    if selected_config is None:
+        raise ValueError(f"Unknown model: {model}")
+
     app = selected_config['app']
+    wire_api = selected_config.get("wire_api", "chat_completions")
     client = None
     
     if app == "openai":
-        client = OpenAI(
-            api_key=selected_config['key'],
-            base_url=selected_config['base_url']
-        )
-        response_fn = lambda: client.chat.completions.create(
-            model=model,
-            temperature=0.3,
-            messages=[{"role": "user", "content": to_summary_text}]
-        ).choices[0].message.content
+        if wire_api == "responses":
+            response_fn = lambda: _create_responses_api_text(
+                base_url=selected_config["base_url"],
+                api_key=selected_config["key"],
+                model=model,
+                prompt=to_summary_text,
+            )
+        elif wire_api == "chat_completions":
+            client = OpenAI(
+                api_key=selected_config['key'],
+                base_url=selected_config['base_url']
+            )
+            response_fn = lambda: client.chat.completions.create(
+                model=model,
+                temperature=0.3,
+                messages=[{"role": "user", "content": to_summary_text}]
+            ).choices[0].message.content
+        else:
+            raise ValueError(f"Unknown OpenAI wire_api: {wire_api}")
 
     elif app == "google":
+        from google import genai
+
         client = genai.Client(api_key=selected_config['key'])
         response_fn = lambda: client.models.generate_content(
             model=model,
@@ -48,12 +98,14 @@ def get_response(to_summary_text: str, model: str = "gemini-2.5-pro") -> str:
     for attempt in range(3):
         try:
             response = response_fn()
+            if not response:
+                raise RuntimeError("模型返回了空内容")
             logger.info("模型生成总结完成。")
             return response
         except Exception as e:
             last_err = e
             logger.warning(f"第 {attempt} 次生成失败: {e}")
-            if attempt < 4:
+            if attempt < 2:
                 time.sleep(1.5 * attempt)
             else:
                 logger.error("重试次数耗尽，仍然失败。")

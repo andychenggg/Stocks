@@ -20,7 +20,7 @@ def summary_run():
     # model = "gemini-3-flash-preview"
     # model = "deepseek-v4-flash"
     # model = "qwen3.5-plus"
-    model = "openai-codex"
+    model = "gpt-5.5"
     summary = get_response(to_summary_text, model=model)
 
     save_to_md(
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         # 休市，检查是否是美东9点
         now_et = datetime.datetime.now(pytz.timezone('America/New_York'))
         logger.info(f"当前美东时间小时：{now_et.hour}")
-        if now_et.hour != 7:
-            exit(0)
+        # if now_et.hour != 7:
+        #     exit(0)
     
     summary_run()
