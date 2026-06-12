@@ -12,7 +12,7 @@ from utils.agent import _sanitize_summary_markdown
 from utils.serenity_x import parse_iso_utc, recent_tweets, tweets_to_text, update_tweets_cache
 
 
-MODEL = "deepseek-v4-flash"
+MODEL = "gpt-5.4"
 OUTPUT_DIR = "docs"
 SERENITY_HISTORY_DIR = os.path.join(OUTPUT_DIR, "serenity-summaries")
 SUMMARY_WINDOW_HOURS = 24
